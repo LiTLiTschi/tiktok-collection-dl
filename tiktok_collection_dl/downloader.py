@@ -33,7 +33,7 @@ def extract_title_from_tiktok_url(url: str) -> Optional[str]:
         https://www.tiktok.com/@username/collection/CollectionName-NumericID
 
     The numeric ID is always >= 10 digits, which avoids false matches on
-    collection names that contain dashes followed by short numbers.
+    collection names that happen to contain dashes and short numbers.
 
     Examples:
         .../collection/sample%3F-7543443541872102166  ->  'sample?'
@@ -42,17 +42,32 @@ def extract_title_from_tiktok_url(url: str) -> Optional[str]:
     match = re.search(r'/collection/(.+?)-(\d{10,})(?:[/?#]|$)', url)
     if match:
         decoded = urllib.parse.unquote(match.group(1))
-        return decoded if decoded.strip() else None
+        return decoded.strip() or None
     return None
 
 
 def get_collection_info(url: str) -> Dict[str, Optional[str]]:
     """
-    Fetch collection metadata from yt-dlp without downloading.
-    Falls back to URL parsing if yt-dlp returns nothing useful
-    (e.g. for private collections where metadata isn't accessible).
+    Fetch collection metadata.
+
+    Title resolution order:
+      1. URL extraction (primary) — always clean, no uploader prefix,
+         works for private collections, no extra network call.
+      2. yt-dlp metadata (fallback) — used only when URL extraction
+         yields nothing (e.g. non-standard / non-collection URLs).
+
+    Uploader is always fetched from yt-dlp (not available in URL).
     All string values are URL-decoded.
     """
+    info: Dict[str, Optional[str]] = {f: None for f in _SUPPORTED_FIELDS}
+
+    # ── Step 1: title from URL (fast, reliable, no network call) ──────────────
+    url_title = extract_title_from_tiktok_url(url)
+    if url_title:
+        info["playlist_title"] = url_title
+        print(f"[tiktok-collection-dl] playlist_title (URL): {url_title!r}")
+
+    # ── Step 2: yt-dlp for uploader + title fallback ───────────────────────
     print_template = _DELIM.join(f"%({f})s" for f in _SUPPORTED_FIELDS)
     cmd = [
         "yt-dlp",
@@ -62,7 +77,6 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
         "--no-warnings",
         url,
     ]
-    info: Dict[str, Optional[str]] = {f: None for f in _SUPPORTED_FIELDS}
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
@@ -70,34 +84,28 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
         for i, field in enumerate(_SUPPORTED_FIELDS):
             raw = parts[i].strip() if i < len(parts) else ""
             if raw and raw.upper() != "NA":
-                info[field] = urllib.parse.unquote(raw)  # decode e.g. %3F -> ?
-            else:
-                info[field] = None
+                decoded = urllib.parse.unquote(raw)
+                if field == "playlist_title" and info["playlist_title"]:
+                    # URL already gave us a clean title — skip yt-dlp's version
+                    # which often contains the uploader prefix baked in.
+                    pass
+                else:
+                    info[field] = decoded
     except FileNotFoundError:
         pass
-
-    # Fallback: if yt-dlp couldn't return a playlist_title (common for private
-    # TikTok collections), extract the name directly from the URL.
-    if not info.get("playlist_title"):
-        fallback = extract_title_from_tiktok_url(url)
-        if fallback:
-            info["playlist_title"] = fallback
-            print(f"[tiktok-collection-dl] playlist_title (URL fallback): {fallback!r}")
 
     return info
 
 
 def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """
-    Ugly fix: TikTok's yt-dlp extractor sometimes bakes the uploader into
-    playlist_title as "uploader-collection_name".
-    Strip the prefix when uploader is known and title starts with it.
+    Ugly fix: strip "uploader-" prefix from playlist_title when yt-dlp
+    bakes it in. Only needed when URL extraction failed and yt-dlp was used.
     """
     title    = info.get("playlist_title") or ""
     uploader = info.get("uploader") or ""
     if not (title and uploader):
         return info
-
     if title.lower().startswith(uploader.lower()):
         remainder = title[len(uploader):]
         stripped  = remainder.lstrip("-_ ")
@@ -120,9 +128,9 @@ def apply_folder_template(template: str, info: Dict[str, Optional[str]]) -> str:
 
 
 def sanitize_folder_name(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*]', "", name)    # strip Windows-illegal chars
-    name = re.sub(r"[\x00-\x1f]", "", name)       # strip control chars
-    name = re.sub(r"\s+", " ", name).strip()       # collapse whitespace
+    name = re.sub(r'[<>:"/\\|?*]', "", name)
+    name = re.sub(r"[\x00-\x1f]", "", name)
+    name = re.sub(r"\s+", " ", name).strip()
     return name
 
 
