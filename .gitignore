@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# downloaded audio files
+*.mp3
+*.m4a
+*.opus
+*.flac
+*.wav
+*.webm
+
+# yt-dlp archive
+.yt-dlp-archive.txt
+
+# local config (don't commit personal paths)
+tiktok_collection_dl_config.yaml
+.config/tiktok_collection_dl_config.yaml

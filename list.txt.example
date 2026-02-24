@@ -1,0 +1,18 @@
+# tiktok-collection-dl — URL list file
+# ─────────────────────────────────────────────────────────────────────────
+# Copy this file to your output directory and rename it to  list.txt
+# Then leave COLLECTION_URL blank in download_collection.bat and just run it.
+#
+# Rules:
+#   - One URL per line
+#   - Lines starting with # are comments (ignored)
+#   - Blank lines are ignored
+#   - Each URL is downloaded in order, into its own subfolder
+#     when use_collection_folder: true is set in the config
+# ─────────────────────────────────────────────────────────────────────────
+
+# My TikTok collections
+https://www.tiktok.com/@user/collection/Collection-Name-123456789
+
+# Another collection
+# https://www.tiktok.com/@otheruser/collection/Other-Name-987654321

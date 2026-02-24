@@ -1,0 +1,14 @@
+# tiktok-collection-dl example config
+# Copy this file to any of:
+#   ~/.config/tiktok_collection_dl_config.yaml        (global)
+#   ./.config/tiktok_collection_dl_config.yaml        (project-level hidden)
+#   ./tiktok_collection_dl_config.yaml                (cwd, highest priority)
+
+audio_format: mp3              # mp3 | m4a | opus | flac | wav | best
+audio_quality: "0"             # 0 = best VBR (~245 kbps), 9 = worst
+output_template: "%(playlist_index)s - %(title)s.%(ext)s"
+ignore_errors: true
+no_overwrites: true
+use_collection_folder: false   # create a subfolder named after each collection
+default_output_dir: null       # e.g. "D:/Music/TikTok" — null means use cwd
+extra_yt_dlp_args: []
