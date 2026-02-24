@@ -1,11 +1,13 @@
 # tiktok-collection-dl config
 # ─────────────────────────────────────────────────────────────────────────────
+# The bat file is just a launcher — set everything here, not in the bat.
+#
 # Config locations (higher number = higher priority):
 #   3.  ~/.config/tiktok_collection_dl_config.yaml
 #   2.  ./.config/tiktok_collection_dl_config.yaml
 #   1.  ./tiktok_collection_dl_config.yaml           (wins)
 #
-# IMPORTANT: always quote values that contain % signs, e.g.:
+# IMPORTANT: always quote values containing % signs:
 #   output_template: "%(playlist_index)s - %(title)s.%(ext)s"   <- correct
 #   output_template:  %(playlist_index)s - %(title)s.%(ext)s    <- YAML ERROR
 # ─────────────────────────────────────────────────────────────────────────────
@@ -31,12 +33,6 @@ output_template: "%(playlist_index)s - %(title)s.%(ext)s"
 # ── Folder organisation ───────────────────────────────────────────────────────
 
 # When true, downloads go into a subfolder named after the collection.
-# Each collection also gets its own .yt-dlp-archive-<hash>.txt skip file.
-#
-# D:\Music\TikTok\
-# └── Dance Hits\
-#     ├── 01 - Track Name.mp3
-#     └── .yt-dlp-archive-3f8a91c4b2e7.txt
 use_collection_folder: false
 
 
@@ -48,10 +44,12 @@ no_overwrites: true
 
 # ── Default output directory ─────────────────────────────────────────────────
 
-# null = use current working directory
+# Set your download location here — the bat file reads this automatically.
+# Use forward slashes or double backslashes.
 # Examples:
+#   default_output_dir: "H:/music/TikTok"
 #   default_output_dir: "D:/Music/TikTok"
-#   default_output_dir: "~/Music/TikTok"
+#   default_output_dir: null    <- uses cwd
 default_output_dir: null
 
 
