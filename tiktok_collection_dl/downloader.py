@@ -13,55 +13,68 @@ from typing import Any, Dict, List, Optional
 
 def get_archive_path(out_dir: Path, url: str) -> Path:
     """
-    Return a URL-specific archive file path inside out_dir.
-
-    Using a SHA-256 hash of the URL means:
-      - Each collection always maps to exactly the same archive file (stable).
-      - Two different collections that share a video each get their own archive,
-        so the video is downloaded once per collection and skipped on re-runs
-        of the same collection.
+    URL-specific archive file so each collection has its own skip list.
+    Same video in two collections → downloaded once per collection.
     """
     url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
     return out_dir / f".yt-dlp-archive-{url_hash}.txt"
 
 
 # ---------------------------------------------------------------------------
-# Collection title helpers
+# Collection info / folder name
 # ---------------------------------------------------------------------------
 
-def get_collection_title(url: str) -> Optional[str]:
+# Fields fetched from yt-dlp and available in collection_folder_template
+_SUPPORTED_FIELDS = ("uploader", "playlist_title")
+_DELIM = "|||"  # safe internal delimiter for multi-field --print
+
+
+def get_collection_info(url: str) -> Dict[str, Optional[str]]:
     """
-    Ask yt-dlp for the collection title without downloading anything.
-    Fetches only the first item metadata via --flat-playlist.
-    TikTok collections are exposed as playlists in yt-dlp, so
-    %(playlist_title)s is the correct field.
+    Fetch collection metadata from yt-dlp without downloading anything.
+    Returns a dict of field → value for all _SUPPORTED_FIELDS.
     """
+    print_template = _DELIM.join(f"%({f})s" for f in _SUPPORTED_FIELDS)
     cmd = [
         "yt-dlp",
         "--flat-playlist",
         "--playlist-items", "1",
-        "--print", "%(playlist_title)s",
+        "--print", print_template,
         "--no-warnings",
         url,
     ]
+    info: Dict[str, Optional[str]] = {f: None for f in _SUPPORTED_FIELDS}
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        lines = result.stdout.strip().splitlines()
-        title = lines[0].strip() if lines else None
-        return title if title and title.upper() != "NA" else None
+        line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+        parts = line.split(_DELIM)
+        for i, field in enumerate(_SUPPORTED_FIELDS):
+            val = parts[i].strip() if i < len(parts) else ""
+            info[field] = val if val and val.upper() != "NA" else None
     except FileNotFoundError:
-        return None
+        pass
+    return info
+
+
+def apply_folder_template(template: str, info: Dict[str, Optional[str]]) -> str:
+    """
+    Replace %(field)s placeholders in the template with fetched values.
+    Unrecognised or missing fields are removed.
+    Falls back to 'collection' if the result is empty after sanitising.
+    """
+    result = template
+    for field, value in info.items():
+        result = result.replace(f"%({field})s", value or "")
+    # Drop any remaining unreplaced placeholders
+    result = re.sub(r"%\([^)]+\)s", "", result)
+    return sanitize_folder_name(result) or "collection"
 
 
 def sanitize_folder_name(name: str) -> str:
-    """
-    Strip characters that are illegal in Windows / Linux folder names
-    and trim whitespace.
-    """
-    name = re.sub(r'[<>:"/\\|?*]', "", name)   # Windows forbidden chars
-    name = re.sub(r"[\x00-\x1f]", "", name)      # control characters
-    name = re.sub(r"\s+", " ", name).strip()      # collapse whitespace
-    return name or "collection"
+    name = re.sub(r'[<>:"/\\|?*]', "", name)
+    name = re.sub(r"[\x00-\x1f]", "", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
 
 
 # ---------------------------------------------------------------------------
@@ -94,19 +107,17 @@ def build_command(url: str, out_dir: Path, archive: Path, cfg: Dict[str, Any]) -
 # ---------------------------------------------------------------------------
 
 def run(url: str, base_out_dir: Path, cfg: Dict[str, Any]) -> int:
-    # Resolve the actual output directory
     if cfg.get("use_collection_folder"):
-        print("[tiktok-collection-dl] Fetching collection title...")
-        title = get_collection_title(url)
-        if title:
-            folder_name = sanitize_folder_name(title)
-            out_dir = base_out_dir / folder_name
-            print(f"[tiktok-collection-dl] Collection : {title!r}")
-            print(f"[tiktok-collection-dl] Subfolder  : {folder_name}")
-        else:
-            out_dir = base_out_dir
-            print("[tiktok-collection-dl] Warning: could not determine collection title, "
-                  "falling back to base output dir.")
+        print("[tiktok-collection-dl] Fetching collection info...")
+        info        = get_collection_info(url)
+        template    = cfg.get("collection_folder_template", "%(playlist_title)s")
+        folder_name = apply_folder_template(template, info)
+        out_dir     = base_out_dir / folder_name
+
+        print(f"[tiktok-collection-dl] uploader       : {info.get('uploader') or 'N/A'}")
+        print(f"[tiktok-collection-dl] playlist_title : {info.get('playlist_title') or 'N/A'}")
+        print(f"[tiktok-collection-dl] folder template: {template}")
+        print(f"[tiktok-collection-dl] folder name    : {folder_name}")
     else:
         out_dir = base_out_dir
 

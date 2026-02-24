@@ -33,7 +33,24 @@ output_template: "%(playlist_index)s - %(title)s.%(ext)s"
 # ── Folder organisation ───────────────────────────────────────────────────────
 
 # When true, downloads go into a subfolder named after the collection.
+# The folder name is controlled by collection_folder_template below.
 use_collection_folder: false
+
+# Controls how the collection subfolder is named.
+# Only used when use_collection_folder is true.
+#
+# Supported fields:
+#   %(playlist_title)s   — the collection name
+#   %(uploader)s         — the creator's username
+#
+# Examples:
+#   "%(playlist_title)s"                    ->  Dance Hits
+#   "%(uploader)s - %(playlist_title)s"     ->  creator - Dance Hits
+#   "@%(uploader)s %(playlist_title)s"      ->  @creator Dance Hits
+#   "%(playlist_title)s [%(uploader)s]"     ->  Dance Hits [creator]
+#
+# Must be quoted (contains % signs).
+collection_folder_template: "%(playlist_title)s"
 
 
 # ── Download behaviour ───────────────────────────────────────────────────────

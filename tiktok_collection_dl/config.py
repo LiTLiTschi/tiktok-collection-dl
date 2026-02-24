@@ -18,19 +18,22 @@ CONFIG_LOCATIONS = [
 ]
 
 DEFAULTS: Dict[str, Any] = {
-    "audio_format":           "mp3",
-    "audio_quality":          "0",
-    "output_template":        "%(playlist_index)s - %(title)s.%(ext)s",
-    "ignore_errors":          True,
-    "no_overwrites":          True,
-    "use_collection_folder":  False,
-    "default_output_dir":     None,
-    "extra_yt_dlp_args":      [],
+    "audio_format":               "mp3",
+    "audio_quality":              "0",
+    "output_template":            "%(playlist_index)s - %(title)s.%(ext)s",
+    "ignore_errors":              True,
+    "no_overwrites":              True,
+    "use_collection_folder":      False,
+    # Template for the collection subfolder name.
+    # Supported fields: %(playlist_title)s  %(uploader)s
+    # Only used when use_collection_folder is true.
+    "collection_folder_template": "%(playlist_title)s",
+    "default_output_dir":         None,
+    "extra_yt_dlp_args":          [],
 }
 
 
 def _format_yaml_error(err: yaml.YAMLError) -> str:
-    """Return a concise, human-readable description of a YAML parse error."""
     mark = getattr(err, "problem_mark", None)
     problem = getattr(err, "problem", str(err))
     if mark:
@@ -61,7 +64,6 @@ def load_config() -> Dict[str, Any]:
             raise SystemExit(2)
 
         if data is None:
-            # Empty file — skip silently
             continue
         if not isinstance(data, dict):
             print(
@@ -72,7 +74,6 @@ def load_config() -> Dict[str, Any]:
             )
             raise SystemExit(2)
 
-        # Warn about unknown keys so typos don't silently go ignored
         unknown = set(data.keys()) - set(DEFAULTS.keys())
         if unknown:
             print(
