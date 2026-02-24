@@ -17,17 +17,22 @@ CONFIG_LOCATIONS = [
 ]
 
 DEFAULTS: Dict[str, Any] = {
-    "audio_format":               "mp3",
-    "audio_quality":              "0",
-    "output_template":            "%(playlist_index)s - %(title)s.%(ext)s",
-    "ignore_errors":              True,
-    "no_overwrites":              True,
-    "use_collection_folder":      False,
-    "collection_folder_template": "%(playlist_title)s",
-    # Write the collection name into the Album ID3 tag of every downloaded track.
-    "embed_collection_as_album":  False,
-    "default_output_dir":         None,
-    "extra_yt_dlp_args":          [],
+    "audio_format":                        "mp3",
+    "audio_quality":                       "0",
+    "output_template":                     "%(playlist_index)s - %(title)s.%(ext)s",
+    "ignore_errors":                       True,
+    "no_overwrites":                       True,
+    "use_collection_folder":               False,
+    "collection_folder_template":          "%(playlist_title)s",
+    # Ugly fix: strip the uploader prefix yt-dlp bakes into playlist_title
+    # e.g. "gohome.gi-My Collection" -> "My Collection"
+    "strip_uploader_from_collection_title": False,
+    "embed_collection_as_album":           False,
+    # Ugly fix: pass --windows-filenames to yt-dlp so illegal chars become _
+    # instead of being percent-encoded (e.g. %3F -> _)
+    "windows_safe_filenames":              False,
+    "default_output_dir":                  None,
+    "extra_yt_dlp_args":                   [],
 }
 
 

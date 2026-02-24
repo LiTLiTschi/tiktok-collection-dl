@@ -15,10 +15,7 @@
 
 # ── Audio ────────────────────────────────────────────────────────────────────
 
-# Options: mp3 | m4a | opus | flac | wav | best
 audio_format: mp3
-
-# 0 = best quality (~245 kbps VBR)  |  9 = smallest / worst
 audio_quality: "0"
 
 
@@ -31,7 +28,6 @@ output_template: "%(playlist_index)s - %(title)s.%(ext)s"
 
 # ── Folder organisation ───────────────────────────────────────────────────────
 
-# When true, downloads go into a subfolder named after the collection.
 use_collection_folder: false
 
 # Controls how the collection subfolder is named.
@@ -49,12 +45,25 @@ use_collection_folder: false
 #
 collection_folder_template: "%(playlist_title)s"
 
+# [UGLY FIX] TikTok's yt-dlp extractor sometimes bakes the uploader name
+# into playlist_title (e.g. "gohome.gi-My Collection" instead of "My Collection").
+# Enable this to strip the uploader prefix automatically.
+# Handles separators: - _ and spaces.
+strip_uploader_from_collection_title: false
+
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
 
 # Write the collection name into the Album ID3 tag of every downloaded track.
 # Requires ffmpeg. --add-metadata is injected automatically when enabled.
 embed_collection_as_album: false
+
+
+# ── Filename fixes ────────────────────────────────────────────────────────────
+
+# [UGLY FIX] yt-dlp percent-encodes illegal Windows filename characters by
+# default (e.g. ? -> %3F). Enable this to replace them with _ instead.
+windows_safe_filenames: false
 
 
 # ── Download behaviour ───────────────────────────────────────────────────────
@@ -65,7 +74,6 @@ no_overwrites: true
 
 # ── Default output directory ─────────────────────────────────────────────────
 
-# Set your download location here — the bat file reads this automatically.
 # Examples:
 #   default_output_dir: "H:/music/TikTok"
 #   default_output_dir: null    <- uses cwd

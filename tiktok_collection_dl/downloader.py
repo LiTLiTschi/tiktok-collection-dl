@@ -47,6 +47,31 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
     return info
 
 
+def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+    """
+    Ugly fix: TikTok's yt-dlp extractor sometimes bakes the uploader into
+    playlist_title as "uploader-collection_name" or "uploader_collection_name".
+    Strip the prefix when uploader is known and title starts with it.
+    """
+    title    = info.get("playlist_title") or ""
+    uploader = info.get("uploader") or ""
+    if not (title and uploader):
+        return info
+
+    if title.lower().startswith(uploader.lower()):
+        remainder = title[len(uploader):]
+        # Accept any leading separator: -, _, space, or combinations
+        stripped = remainder.lstrip("-_ ")
+        if stripped:
+            print(
+                f"[tiktok-collection-dl] strip_uploader_from_collection_title: "
+                f"{title!r} -> {stripped!r}"
+            )
+            info = dict(info)          # don't mutate original
+            info["playlist_title"] = stripped
+    return info
+
+
 def apply_folder_template(template: str, info: Dict[str, Optional[str]]) -> str:
     result = template
     for field, value in info.items():
@@ -67,24 +92,21 @@ def sanitize_folder_name(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def metadata_flags(cfg: Dict[str, Any]) -> List[str]:
-    """
-    Build the list of yt-dlp metadata flags derived from config.
-    --add-metadata is injected automatically when any metadata feature is on.
-    """
     flags: List[str] = []
     needs_add_metadata = False
 
-    # Write the collection name into the Album ID3 tag.
     if cfg.get("embed_collection_as_album"):
-        flags += [
-            "--parse-metadata",
-            "playlist_title:%(album)s",
-        ]
+        flags += ["--parse-metadata", "playlist_title:%(album)s"]
         needs_add_metadata = True
 
     extra = cfg.get("extra_yt_dlp_args") or []
     if needs_add_metadata and "--add-metadata" not in extra:
         flags.append("--add-metadata")
+
+    # Ugly fix: replace illegal Windows filename chars with _ instead of
+    # percent-encoding them (e.g. ? -> _ instead of %3F)
+    if cfg.get("windows_safe_filenames"):
+        flags.append("--windows-filenames")
 
     return flags
 
@@ -130,6 +152,9 @@ def run(url: str, base_out_dir: Path, cfg: Dict[str, Any]) -> int:
         info = get_collection_info(url)
         print(f"[tiktok-collection-dl] uploader       : {info.get('uploader') or 'N/A'}")
         print(f"[tiktok-collection-dl] playlist_title : {info.get('playlist_title') or 'N/A'}")
+
+        if cfg.get("strip_uploader_from_collection_title"):
+            info = strip_uploader_prefix(info)
     else:
         info = {f: None for f in _SUPPORTED_FIELDS}
 
