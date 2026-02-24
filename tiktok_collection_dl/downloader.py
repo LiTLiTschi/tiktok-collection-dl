@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import re
+import shlex
 import subprocess
 import sys
 import urllib.parse
@@ -29,15 +30,13 @@ def extract_title_from_tiktok_url(url: str) -> Optional[str]:
     """
     Extract and URL-decode the collection name from a TikTok collection URL.
 
-    TikTok collection URL format:
-        https://www.tiktok.com/@username/collection/CollectionName-NumericID
-
-    The numeric ID is always >= 10 digits, which avoids false matches on
-    collection names that happen to contain dashes and short numbers.
+    Format: https://www.tiktok.com/@username/collection/CollectionName-NumericID
+    The numeric ID is always >= 10 digits, avoiding false matches on collection
+    names that contain dashes followed by short numbers.
 
     Examples:
         .../collection/sample%3F-7543443541872102166  ->  'sample?'
-        .../collection/Voice%20Samples-7484970166855338774  ->  'Voice Samples'
+        .../collection/Voice%20Samples-748497016...   ->  'Voice Samples'
     """
     match = re.search(r'/collection/(.+?)-(\d{10,})(?:[/?#]|$)', url)
     if match:
@@ -51,23 +50,22 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
     Fetch collection metadata.
 
     Title resolution order:
-      1. URL extraction (primary) — always clean, no uploader prefix,
-         works for private collections, no extra network call.
-      2. yt-dlp metadata (fallback) — used only when URL extraction
-         yields nothing (e.g. non-standard / non-collection URLs).
+      1. URL extraction (primary) — always clean, no uploader prefix, works for
+         private collections, no extra network call.
+      2. yt-dlp metadata (fallback) — only used when URL extraction fails.
 
     Uploader is always fetched from yt-dlp (not available in URL).
-    All string values are URL-decoded.
+    All values are URL-decoded.
     """
     info: Dict[str, Optional[str]] = {f: None for f in _SUPPORTED_FIELDS}
 
-    # ── Step 1: title from URL (fast, reliable, no network call) ──────────────
+    # Step 1: title from URL — fast, reliable, no network call
     url_title = extract_title_from_tiktok_url(url)
     if url_title:
         info["playlist_title"] = url_title
         print(f"[tiktok-collection-dl] playlist_title (URL): {url_title!r}")
 
-    # ── Step 2: yt-dlp for uploader + title fallback ───────────────────────
+    # Step 2: yt-dlp for uploader + title fallback only
     print_template = _DELIM.join(f"%({f})s" for f in _SUPPORTED_FIELDS)
     cmd = [
         "yt-dlp",
@@ -86,9 +84,7 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
             if raw and raw.upper() != "NA":
                 decoded = urllib.parse.unquote(raw)
                 if field == "playlist_title" and info["playlist_title"]:
-                    # URL already gave us a clean title — skip yt-dlp's version
-                    # which often contains the uploader prefix baked in.
-                    pass
+                    pass  # URL already gave us a clean title — skip yt-dlp's dirty version
                 else:
                     info[field] = decoded
     except FileNotFoundError:
@@ -98,17 +94,13 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
 
 
 def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
-    """
-    Ugly fix: strip "uploader-" prefix from playlist_title when yt-dlp
-    bakes it in. Only needed when URL extraction failed and yt-dlp was used.
-    """
+    """Fallback strip for when URL extraction failed and yt-dlp baked uploader into title."""
     title    = info.get("playlist_title") or ""
     uploader = info.get("uploader") or ""
     if not (title and uploader):
         return info
     if title.lower().startswith(uploader.lower()):
-        remainder = title[len(uploader):]
-        stripped  = remainder.lstrip("-_ ")
+        stripped = title[len(uploader):].lstrip("-_ ")
         if stripped:
             print(
                 f"[tiktok-collection-dl] strip_uploader_from_collection_title: "
@@ -138,17 +130,33 @@ def sanitize_folder_name(name: str) -> str:
 # Metadata flags
 # ---------------------------------------------------------------------------
 
-def metadata_flags(cfg: Dict[str, Any]) -> List[str]:
+def metadata_flags(cfg: Dict[str, Any], album_name: Optional[str] = None) -> List[str]:
+    """
+    Build yt-dlp metadata flags from config.
+
+    When embed_collection_as_album is True and we have a clean album_name,
+    the album tag is injected directly into the ffmpeg audio extraction call
+    via --postprocessor-args.  This bypasses yt-dlp's internal playlist_title
+    which is often polluted with uploader prefix and percent-encoded characters.
+    """
     flags: List[str] = []
-    needs_add_metadata = False
+    extra = cfg.get("extra_yt_dlp_args") or []
 
     if cfg.get("embed_collection_as_album"):
-        flags += ["--parse-metadata", "playlist_title:%(album)s"]
-        needs_add_metadata = True
-
-    extra = cfg.get("extra_yt_dlp_args") or []
-    if needs_add_metadata and "--add-metadata" not in extra:
-        flags.append("--add-metadata")
+        if album_name:
+            # Direct ffmpeg injection: clean Python-resolved title -> album tag.
+            # Targets only FFmpegExtractAudio so it doesn't affect other ffmpeg calls.
+            # shlex.quote handles spaces and special chars in the album name.
+            album_kv = shlex.quote(f"album={album_name}")
+            flags += [
+                "--postprocessor-args",
+                f"ffmpeg-FFmpegExtractAudio:-metadata {album_kv}",
+            ]
+        else:
+            # Fallback: map yt-dlp's playlist_title to album (may be dirty)
+            flags += ["--parse-metadata", "playlist_title:%(album)s"]
+            if "--add-metadata" not in extra:
+                flags.append("--add-metadata")
 
     if cfg.get("windows_safe_filenames"):
         flags.append("--windows-filenames")
@@ -160,7 +168,13 @@ def metadata_flags(cfg: Dict[str, Any]) -> List[str]:
 # Command builder
 # ---------------------------------------------------------------------------
 
-def build_command(url: str, out_dir: Path, archive: Path, cfg: Dict[str, Any]) -> List[str]:
+def build_command(
+    url: str,
+    out_dir: Path,
+    archive: Path,
+    cfg: Dict[str, Any],
+    album_name: Optional[str] = None,
+) -> List[str]:
     cmd = [
         "yt-dlp",
         "--format",           "bestaudio/best",
@@ -176,7 +190,7 @@ def build_command(url: str, out_dir: Path, archive: Path, cfg: Dict[str, Any]) -
     if cfg.get("ignore_errors"):
         cmd.append("--ignore-errors")
 
-    cmd.extend(metadata_flags(cfg))
+    cmd.extend(metadata_flags(cfg, album_name=album_name))
 
     if cfg.get("extra_yt_dlp_args"):
         cmd.extend(cfg["extra_yt_dlp_args"])
@@ -214,11 +228,14 @@ def run(url: str, base_out_dir: Path, cfg: Dict[str, Any]) -> int:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    archive = get_archive_path(out_dir, url)
-    cmd     = build_command(url, out_dir, archive, cfg)
+    album_name = info.get("playlist_title") if cfg.get("embed_collection_as_album") else None
+    archive    = get_archive_path(out_dir, url)
+    cmd        = build_command(url, out_dir, archive, cfg, album_name=album_name)
 
     print(f"[tiktok-collection-dl] Output dir : {out_dir}")
     print(f"[tiktok-collection-dl] Archive    : {archive}")
+    if album_name:
+        print(f"[tiktok-collection-dl] Album tag  : {album_name!r}")
     print(f"[tiktok-collection-dl] Command    : {' '.join(cmd)}\n")
 
     try:
