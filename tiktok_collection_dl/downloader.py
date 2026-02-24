@@ -1,7 +1,6 @@
 from __future__ import annotations
 import hashlib
 import re
-import shlex
 import subprocess
 import sys
 import urllib.parse
@@ -29,14 +28,8 @@ _DELIM = "|||"
 def extract_title_from_tiktok_url(url: str) -> Optional[str]:
     """
     Extract and URL-decode the collection name from a TikTok collection URL.
-
     Format: https://www.tiktok.com/@username/collection/CollectionName-NumericID
-    The numeric ID is always >= 10 digits, avoiding false matches on collection
-    names that contain dashes followed by short numbers.
-
-    Examples:
-        .../collection/sample%3F-7543443541872102166  ->  'sample?'
-        .../collection/Voice%20Samples-748497016...   ->  'Voice Samples'
+    The numeric ID is always >= 10 digits to avoid false matches.
     """
     match = re.search(r'/collection/(.+?)-(\d{10,})(?:[/?#]|$)', url)
     if match:
@@ -48,18 +41,13 @@ def extract_title_from_tiktok_url(url: str) -> Optional[str]:
 def get_collection_info(url: str) -> Dict[str, Optional[str]]:
     """
     Fetch collection metadata.
-
-    Title resolution order:
-      1. URL extraction (primary) — always clean, no uploader prefix, works for
-         private collections, no extra network call.
-      2. yt-dlp metadata (fallback) — only used when URL extraction fails.
-
-    Uploader is always fetched from yt-dlp (not available in URL).
-    All values are URL-decoded.
+    Title is always sourced from the URL (primary) since yt-dlp's playlist_title
+    often contains the uploader prefix and percent-encoded characters.
+    Uploader is fetched from yt-dlp as a secondary call.
     """
     info: Dict[str, Optional[str]] = {f: None for f in _SUPPORTED_FIELDS}
 
-    # Step 1: title from URL — fast, reliable, no network call
+    # Step 1: clean title from URL
     url_title = extract_title_from_tiktok_url(url)
     if url_title:
         info["playlist_title"] = url_title
@@ -84,7 +72,7 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
             if raw and raw.upper() != "NA":
                 decoded = urllib.parse.unquote(raw)
                 if field == "playlist_title" and info["playlist_title"]:
-                    pass  # URL already gave us a clean title — skip yt-dlp's dirty version
+                    pass  # URL already gave us a clean title
                 else:
                     info[field] = decoded
     except FileNotFoundError:
@@ -94,7 +82,7 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
 
 
 def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
-    """Fallback strip for when URL extraction failed and yt-dlp baked uploader into title."""
+    """Fallback: strip uploader prefix if URL extraction failed and yt-dlp baked it in."""
     title    = info.get("playlist_title") or ""
     uploader = info.get("uploader") or ""
     if not (title and uploader):
@@ -132,31 +120,35 @@ def sanitize_folder_name(name: str) -> str:
 
 def metadata_flags(cfg: Dict[str, Any], album_name: Optional[str] = None) -> List[str]:
     """
-    Build yt-dlp metadata flags from config.
+    Build yt-dlp metadata flags.
 
-    When embed_collection_as_album is True and we have a clean album_name,
-    the album tag is injected directly into the ffmpeg audio extraction call
-    via --postprocessor-args.  This bypasses yt-dlp's internal playlist_title
-    which is often polluted with uploader prefix and percent-encoded characters.
+    Album embedding uses --replace-in-metadata which operates on yt-dlp's
+    internal metadata dict in Python, BEFORE any ffmpeg call.
+    This avoids all quoting issues and PP name problems with --postprocessor-args.
+
+    Flow when album_name is known:
+      1. --parse-metadata "playlist_title:%(album)s"  -> initialise album field
+      2. --replace-in-metadata "album" ".+" clean      -> overwrite with clean title
+      3. --add-metadata                               -> ffmpeg embeds clean album
     """
     flags: List[str] = []
     extra = cfg.get("extra_yt_dlp_args") or []
 
     if cfg.get("embed_collection_as_album"):
         if album_name:
-            # Direct ffmpeg injection: clean Python-resolved title -> album tag.
-            # Targets only FFmpegExtractAudio so it doesn't affect other ffmpeg calls.
-            # shlex.quote handles spaces and special chars in the album name.
-            album_kv = shlex.quote(f"album={album_name}")
             flags += [
-                "--postprocessor-args",
-                f"ffmpeg-FFmpegExtractAudio:-metadata {album_kv}",
+                # Initialise album field from yt-dlp's (possibly dirty) playlist_title
+                "--parse-metadata", "playlist_title:%(album)s",
+                # Immediately overwrite with our clean Python-resolved title.
+                # .+ matches any non-empty value; leaves untouched if somehow empty.
+                "--replace-in-metadata", "album", ".+", album_name,
             ]
         else:
-            # Fallback: map yt-dlp's playlist_title to album (may be dirty)
+            # No clean title available — fall back to yt-dlp's field directly
             flags += ["--parse-metadata", "playlist_title:%(album)s"]
-            if "--add-metadata" not in extra:
-                flags.append("--add-metadata")
+
+        if "--add-metadata" not in extra:
+            flags.append("--add-metadata")
 
     if cfg.get("windows_safe_filenames"):
         flags.append("--windows-filenames")
