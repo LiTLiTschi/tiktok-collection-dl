@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import List
 
+from . import __version__
 from .config import load_config
 from .downloader import run
 
@@ -60,6 +61,8 @@ def main():
     )
     args = parser.parse_args()
 
+    print(f"[tiktok-collection-dl] v{__version__}")
+
     cfg = load_config()
 
     if args.audio_format:
@@ -70,9 +73,7 @@ def main():
     # -----------------------------------------------------------------------
     # Smart disambiguation:
     # If only one positional arg was given and it looks like a local path
-    # (not a URL), treat it as output_dir rather than url.  This lets the
-    # bat file call  tiktok-collection-dl "D:\Music\TikTok"  when relying
-    # on list.txt.
+    # (not a URL), treat it as output_dir rather than url.
     # -----------------------------------------------------------------------
     url_arg        = args.url
     output_dir_arg = args.output_dir
@@ -107,7 +108,7 @@ def main():
                     file=sys.stderr,
                 )
                 sys.exit(1)
-            print(f"[tiktok-collection-dl] Found list.txt — {len(urls)} URL(s) queued")
+            print(f"[tiktok-collection-dl] Found list.txt \u2014 {len(urls)} URL(s) queued")
         else:
             print(
                 f"[ERROR] No URL given and no list.txt found in:\n"
@@ -124,7 +125,7 @@ def main():
     exit_code = 0
     for i, url in enumerate(urls, 1):
         if len(urls) > 1:
-            print(f"\n[tiktok-collection-dl] ── {i}/{len(urls)}: {url}")
+            print(f"\n[tiktok-collection-dl] \u2500\u2500 {i}/{len(urls)}: {url}")
         result = run(url, out_dir, cfg)
         if result != 0:
             exit_code = result

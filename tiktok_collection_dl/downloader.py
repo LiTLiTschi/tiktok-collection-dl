@@ -3,6 +3,7 @@ import hashlib
 import re
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +25,34 @@ _SUPPORTED_FIELDS = ("uploader", "playlist_title")
 _DELIM = "|||"
 
 
+def extract_title_from_tiktok_url(url: str) -> Optional[str]:
+    """
+    Extract and URL-decode the collection name from a TikTok collection URL.
+
+    TikTok collection URL format:
+        https://www.tiktok.com/@username/collection/CollectionName-NumericID
+
+    The numeric ID is always >= 10 digits, which avoids false matches on
+    collection names that contain dashes followed by short numbers.
+
+    Examples:
+        .../collection/sample%3F-7543443541872102166  ->  'sample?'
+        .../collection/Voice%20Samples-7484970166855338774  ->  'Voice Samples'
+    """
+    match = re.search(r'/collection/(.+?)-(\d{10,})(?:[/?#]|$)', url)
+    if match:
+        decoded = urllib.parse.unquote(match.group(1))
+        return decoded if decoded.strip() else None
+    return None
+
+
 def get_collection_info(url: str) -> Dict[str, Optional[str]]:
+    """
+    Fetch collection metadata from yt-dlp without downloading.
+    Falls back to URL parsing if yt-dlp returns nothing useful
+    (e.g. for private collections where metadata isn't accessible).
+    All string values are URL-decoded.
+    """
     print_template = _DELIM.join(f"%({f})s" for f in _SUPPORTED_FIELDS)
     cmd = [
         "yt-dlp",
@@ -40,17 +68,29 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
         line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
         parts = line.split(_DELIM)
         for i, field in enumerate(_SUPPORTED_FIELDS):
-            val = parts[i].strip() if i < len(parts) else ""
-            info[field] = val if val and val.upper() != "NA" else None
+            raw = parts[i].strip() if i < len(parts) else ""
+            if raw and raw.upper() != "NA":
+                info[field] = urllib.parse.unquote(raw)  # decode e.g. %3F -> ?
+            else:
+                info[field] = None
     except FileNotFoundError:
         pass
+
+    # Fallback: if yt-dlp couldn't return a playlist_title (common for private
+    # TikTok collections), extract the name directly from the URL.
+    if not info.get("playlist_title"):
+        fallback = extract_title_from_tiktok_url(url)
+        if fallback:
+            info["playlist_title"] = fallback
+            print(f"[tiktok-collection-dl] playlist_title (URL fallback): {fallback!r}")
+
     return info
 
 
 def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """
     Ugly fix: TikTok's yt-dlp extractor sometimes bakes the uploader into
-    playlist_title as "uploader-collection_name" or "uploader_collection_name".
+    playlist_title as "uploader-collection_name".
     Strip the prefix when uploader is known and title starts with it.
     """
     title    = info.get("playlist_title") or ""
@@ -60,14 +100,13 @@ def strip_uploader_prefix(info: Dict[str, Optional[str]]) -> Dict[str, Optional[
 
     if title.lower().startswith(uploader.lower()):
         remainder = title[len(uploader):]
-        # Accept any leading separator: -, _, space, or combinations
-        stripped = remainder.lstrip("-_ ")
+        stripped  = remainder.lstrip("-_ ")
         if stripped:
             print(
                 f"[tiktok-collection-dl] strip_uploader_from_collection_title: "
                 f"{title!r} -> {stripped!r}"
             )
-            info = dict(info)          # don't mutate original
+            info = dict(info)
             info["playlist_title"] = stripped
     return info
 
@@ -81,9 +120,9 @@ def apply_folder_template(template: str, info: Dict[str, Optional[str]]) -> str:
 
 
 def sanitize_folder_name(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*]', "", name)
-    name = re.sub(r"[\x00-\x1f]", "", name)
-    name = re.sub(r"\s+", " ", name).strip()
+    name = re.sub(r'[<>:"/\\|?*]', "", name)    # strip Windows-illegal chars
+    name = re.sub(r"[\x00-\x1f]", "", name)       # strip control chars
+    name = re.sub(r"\s+", " ", name).strip()       # collapse whitespace
     return name
 
 
@@ -103,8 +142,6 @@ def metadata_flags(cfg: Dict[str, Any]) -> List[str]:
     if needs_add_metadata and "--add-metadata" not in extra:
         flags.append("--add-metadata")
 
-    # Ugly fix: replace illegal Windows filename chars with _ instead of
-    # percent-encoding them (e.g. ? -> _ instead of %3F)
     if cfg.get("windows_safe_filenames"):
         flags.append("--windows-filenames")
 
@@ -179,7 +216,7 @@ def run(url: str, base_out_dir: Path, cfg: Dict[str, Any]) -> int:
     try:
         return subprocess.run(cmd, check=False).returncode
     except FileNotFoundError:
-        print("[ERROR] yt-dlp not found — is it on your PATH?", file=sys.stderr)
+        print("[ERROR] yt-dlp not found \u2014 is it on your PATH?", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
         print("\n[tiktok-collection-dl] Stopped by user.")
