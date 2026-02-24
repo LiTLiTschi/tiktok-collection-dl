@@ -1,4 +1,5 @@
 @echo off
+CALL "~\.venv\Scripts\activate.bat"
 REM ─────────────────────────────────────────────────────────────────────────
 REM  tiktok-collection-dl launcher
 REM
