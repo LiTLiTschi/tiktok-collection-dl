@@ -2,19 +2,20 @@
 REM ─────────────────────────────────────────────────────────────────────────
 REM  tiktok-collection-dl launcher
 REM
-REM  Option A — single collection:
-REM    Set COLLECTION_URL below. OUTPUT_DIR is where the file(s) land.
+REM  IMPORTANT: use  set "VAR=value"  (quotes around the whole assignment).
+REM  This prevents the & in TikTok URLs from being treated as a command
+REM  separator by cmd.exe.
 REM
-REM  Option B — batch from list.txt:
-REM    Leave COLLECTION_URL blank and create OUTPUT_DIR\list.txt
-REM    with one TikTok collection URL per line (# lines are comments).
+REM  Option A — single collection:  set COLLECTION_URL to the full URL.
+REM  Option B — batch from list.txt: leave COLLECTION_URL blank and create
+REM             OUTPUT_DIR\list.txt with one URL per line (# = comment).
 REM ─────────────────────────────────────────────────────────────────────────
 
 REM TikTok collection URL  (leave blank to use list.txt instead)
-set COLLECTION_URL=
+set "COLLECTION_URL="
 
 REM Destination folder
-set OUTPUT_DIR=D:\Music\TikTok
+set "OUTPUT_DIR=D:\Music\TikTok"
 
 REM ─────────────────────────────────────────────────────────────────────────
 REM  Nothing to edit below this line

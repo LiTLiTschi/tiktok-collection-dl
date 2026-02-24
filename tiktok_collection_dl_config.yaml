@@ -1,82 +1,62 @@
 # tiktok-collection-dl config
 # ─────────────────────────────────────────────────────────────────────────────
-# This file is loaded automatically if placed in any of these locations
-# (higher number = higher priority, overrides the ones below):
+# Config locations (higher number = higher priority):
+#   3.  ~/.config/tiktok_collection_dl_config.yaml
+#   2.  ./.config/tiktok_collection_dl_config.yaml
+#   1.  ./tiktok_collection_dl_config.yaml           (wins)
 #
-#   3.  ~/.config/tiktok_collection_dl_config.yaml      ← global user default
-#   2.  ./.config/tiktok_collection_dl_config.yaml      ← project-level
-#   1.  ./tiktok_collection_dl_config.yaml              ← next to the .bat file (wins)
-#
-# All three files are merged — you only need to set the keys you want to change.
+# IMPORTANT: always quote values that contain % signs, e.g.:
+#   output_template: "%(playlist_index)s - %(title)s.%(ext)s"   <- correct
+#   output_template:  %(playlist_index)s - %(title)s.%(ext)s    <- YAML ERROR
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 # ── Audio ────────────────────────────────────────────────────────────────────
 
-# Output format after conversion.
-# Options: mp3 | m4a | opus | flac | wav | best (keep original, no conversion)
+# Options: mp3 | m4a | opus | flac | wav | best
 audio_format: mp3
 
-# Quality level (applies to VBR encoding).
-# 0 = best quality (~245 kbps VBR for mp3)  |  9 = smallest file / worst quality
+# 0 = best quality (~245 kbps VBR)  |  9 = smallest / worst
 audio_quality: "0"
 
 
 # ── File naming ──────────────────────────────────────────────────────────────
 
-# yt-dlp output template for file names.
-# Available variables: %(playlist_index)s  %(title)s  %(uploader)s  %(ext)s
+# MUST be quoted because of the % signs.
+# Variables: %(playlist_index)s  %(title)s  %(uploader)s  %(ext)s
 # See: https://github.com/yt-dlp/yt-dlp#output-template
 output_template: "%(playlist_index)s - %(title)s.%(ext)s"
 
 
 # ── Folder organisation ───────────────────────────────────────────────────────
 
-# When true, a subfolder named after the collection is automatically created
-# inside the output directory. Each collection gets its own folder and its own
-# .yt-dlp-archive.txt, so re-running only skips tracks already in that collection.
+# When true, downloads go into a subfolder named after the collection.
+# Each collection also gets its own .yt-dlp-archive-<hash>.txt skip file.
 #
-# Example result with output_dir = D:\Music\TikTok and a collection called "Dance Hits":
-#   D:\Music\TikTok\
-#   └── Dance Hits\
-#       ├── 01 - Track Name.mp3
-#       ├── 02 - Another Track.mp3
-#       └── .yt-dlp-archive.txt   ← skip list lives here too
+# D:\Music\TikTok\
+# └── Dance Hits\
+#     ├── 01 - Track Name.mp3
+#     └── .yt-dlp-archive-3f8a91c4b2e7.txt
 use_collection_folder: false
 
 
 # ── Download behaviour ───────────────────────────────────────────────────────
 
-# Continue downloading even if individual videos are unavailable.
 ignore_errors: true
-
-# Never overwrite a file that already exists on disk.
-# Note: the archive file (see above) is the primary skip mechanism.
 no_overwrites: true
 
 
 # ── Default output directory ─────────────────────────────────────────────────
 
-# Where to save files when no output_dir is passed as a CLI argument.
-# Accepts absolute paths, relative paths, and ~ for home directory.
-# Set to null to use the current working directory instead.
-#
+# null = use current working directory
 # Examples:
 #   default_output_dir: "D:/Music/TikTok"
 #   default_output_dir: "~/Music/TikTok"
-#   default_output_dir: null
 default_output_dir: null
 
 
 # ── Extra yt-dlp flags ───────────────────────────────────────────────────────
 
-# Any additional yt-dlp arguments passed verbatim.
-# Each flag must be a separate list item.
-#
-# Useful extras:
-#   "--embed-thumbnail"   — embed cover art into the audio file
-#   "--add-metadata"      — write title/uploader/etc. into ID3 tags
-#
 extra_yt_dlp_args: []
 #   - "--embed-thumbnail"
 #   - "--add-metadata"
