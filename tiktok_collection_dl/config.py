@@ -10,11 +10,10 @@ except ImportError:
 
 FILENAME = "tiktok_collection_dl_config.yaml"
 
-# Loaded in order — later entries override earlier ones (cwd wins over global)
 CONFIG_LOCATIONS = [
-    Path.home() / ".config" / FILENAME,      # 3 — global user
-    Path.cwd() / ".config" / FILENAME,       # 2 — project hidden dir
-    Path.cwd() / FILENAME,                   # 1 — cwd (highest priority)
+    Path.home() / ".config" / FILENAME,
+    Path.cwd() / ".config" / FILENAME,
+    Path.cwd() / FILENAME,
 ]
 
 DEFAULTS: Dict[str, Any] = {
@@ -24,10 +23,9 @@ DEFAULTS: Dict[str, Any] = {
     "ignore_errors":              True,
     "no_overwrites":              True,
     "use_collection_folder":      False,
-    # Template for the collection subfolder name.
-    # Supported fields: %(playlist_title)s  %(uploader)s
-    # Only used when use_collection_folder is true.
     "collection_folder_template": "%(playlist_title)s",
+    # Write the collection name into the Album ID3 tag of every downloaded track.
+    "embed_collection_as_album":  False,
     "default_output_dir":         None,
     "extra_yt_dlp_args":          [],
 }
@@ -67,7 +65,7 @@ def load_config() -> Dict[str, Any]:
             continue
         if not isinstance(data, dict):
             print(
-                f"[ERROR] Config file must be a YAML mapping (key: value pairs).\n"
+                f"[ERROR] Config must be a YAML mapping (key: value pairs).\n"
                 f"        Got {type(data).__name__} instead in:\n"
                 f"        {path}",
                 file=sys.stderr,

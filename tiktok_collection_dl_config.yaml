@@ -26,14 +26,12 @@ audio_quality: "0"
 
 # MUST be quoted because of the % signs.
 # Variables: %(playlist_index)s  %(title)s  %(uploader)s  %(ext)s
-# See: https://github.com/yt-dlp/yt-dlp#output-template
 output_template: "%(playlist_index)s - %(title)s.%(ext)s"
 
 
 # ── Folder organisation ───────────────────────────────────────────────────────
 
 # When true, downloads go into a subfolder named after the collection.
-# The folder name is controlled by collection_folder_template below.
 use_collection_folder: false
 
 # Controls how the collection subfolder is named.
@@ -49,8 +47,14 @@ use_collection_folder: false
 #   "@%(uploader)s %(playlist_title)s"      ->  @creator Dance Hits
 #   "%(playlist_title)s [%(uploader)s]"     ->  Dance Hits [creator]
 #
-# Must be quoted (contains % signs).
 collection_folder_template: "%(playlist_title)s"
+
+
+# ── Metadata ──────────────────────────────────────────────────────────────────
+
+# Write the collection name into the Album ID3 tag of every downloaded track.
+# Requires ffmpeg. --add-metadata is injected automatically when enabled.
+embed_collection_as_album: false
 
 
 # ── Download behaviour ───────────────────────────────────────────────────────
@@ -62,10 +66,8 @@ no_overwrites: true
 # ── Default output directory ─────────────────────────────────────────────────
 
 # Set your download location here — the bat file reads this automatically.
-# Use forward slashes or double backslashes.
 # Examples:
 #   default_output_dir: "H:/music/TikTok"
-#   default_output_dir: "D:/Music/TikTok"
 #   default_output_dir: null    <- uses cwd
 default_output_dir: null
 

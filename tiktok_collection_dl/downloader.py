@@ -12,10 +12,6 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 
 def get_archive_path(out_dir: Path, url: str) -> Path:
-    """
-    URL-specific archive file so each collection has its own skip list.
-    Same video in two collections → downloaded once per collection.
-    """
     url_hash = hashlib.sha256(url.encode()).hexdigest()[:12]
     return out_dir / f".yt-dlp-archive-{url_hash}.txt"
 
@@ -24,16 +20,11 @@ def get_archive_path(out_dir: Path, url: str) -> Path:
 # Collection info / folder name
 # ---------------------------------------------------------------------------
 
-# Fields fetched from yt-dlp and available in collection_folder_template
 _SUPPORTED_FIELDS = ("uploader", "playlist_title")
-_DELIM = "|||"  # safe internal delimiter for multi-field --print
+_DELIM = "|||"
 
 
 def get_collection_info(url: str) -> Dict[str, Optional[str]]:
-    """
-    Fetch collection metadata from yt-dlp without downloading anything.
-    Returns a dict of field → value for all _SUPPORTED_FIELDS.
-    """
     print_template = _DELIM.join(f"%({f})s" for f in _SUPPORTED_FIELDS)
     cmd = [
         "yt-dlp",
@@ -57,15 +48,9 @@ def get_collection_info(url: str) -> Dict[str, Optional[str]]:
 
 
 def apply_folder_template(template: str, info: Dict[str, Optional[str]]) -> str:
-    """
-    Replace %(field)s placeholders in the template with fetched values.
-    Unrecognised or missing fields are removed.
-    Falls back to 'collection' if the result is empty after sanitising.
-    """
     result = template
     for field, value in info.items():
         result = result.replace(f"%({field})s", value or "")
-    # Drop any remaining unreplaced placeholders
     result = re.sub(r"%\([^)]+\)s", "", result)
     return sanitize_folder_name(result) or "collection"
 
@@ -75,6 +60,33 @@ def sanitize_folder_name(name: str) -> str:
     name = re.sub(r"[\x00-\x1f]", "", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name
+
+
+# ---------------------------------------------------------------------------
+# Metadata flags
+# ---------------------------------------------------------------------------
+
+def metadata_flags(cfg: Dict[str, Any]) -> List[str]:
+    """
+    Build the list of yt-dlp metadata flags derived from config.
+    --add-metadata is injected automatically when any metadata feature is on.
+    """
+    flags: List[str] = []
+    needs_add_metadata = False
+
+    # Write the collection name into the Album ID3 tag.
+    if cfg.get("embed_collection_as_album"):
+        flags += [
+            "--parse-metadata",
+            "playlist_title:%(album)s",
+        ]
+        needs_add_metadata = True
+
+    extra = cfg.get("extra_yt_dlp_args") or []
+    if needs_add_metadata and "--add-metadata" not in extra:
+        flags.append("--add-metadata")
+
+    return flags
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +108,12 @@ def build_command(url: str, out_dir: Path, archive: Path, cfg: Dict[str, Any]) -
         cmd.append("--no-overwrites")
     if cfg.get("ignore_errors"):
         cmd.append("--ignore-errors")
+
+    cmd.extend(metadata_flags(cfg))
+
     if cfg.get("extra_yt_dlp_args"):
         cmd.extend(cfg["extra_yt_dlp_args"])
+
     cmd.append(url)
     return cmd
 
@@ -107,15 +123,20 @@ def build_command(url: str, out_dir: Path, archive: Path, cfg: Dict[str, Any]) -
 # ---------------------------------------------------------------------------
 
 def run(url: str, base_out_dir: Path, cfg: Dict[str, Any]) -> int:
-    if cfg.get("use_collection_folder"):
+    needs_info = cfg.get("use_collection_folder") or cfg.get("embed_collection_as_album")
+
+    if needs_info:
         print("[tiktok-collection-dl] Fetching collection info...")
-        info        = get_collection_info(url)
+        info = get_collection_info(url)
+        print(f"[tiktok-collection-dl] uploader       : {info.get('uploader') or 'N/A'}")
+        print(f"[tiktok-collection-dl] playlist_title : {info.get('playlist_title') or 'N/A'}")
+    else:
+        info = {f: None for f in _SUPPORTED_FIELDS}
+
+    if cfg.get("use_collection_folder"):
         template    = cfg.get("collection_folder_template", "%(playlist_title)s")
         folder_name = apply_folder_template(template, info)
         out_dir     = base_out_dir / folder_name
-
-        print(f"[tiktok-collection-dl] uploader       : {info.get('uploader') or 'N/A'}")
-        print(f"[tiktok-collection-dl] playlist_title : {info.get('playlist_title') or 'N/A'}")
         print(f"[tiktok-collection-dl] folder template: {template}")
         print(f"[tiktok-collection-dl] folder name    : {folder_name}")
     else:
